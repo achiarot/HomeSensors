@@ -1,0 +1,11 @@
+This file is a compilation of ideas for the project
+
+Types of stations:
+Door Locks/Deadbolt
+Door/Window sensors
+Garage door controller
+Temperature/other sensors
+
+Deadbolt
+This would be different from a door sensor.  It could use BT or WIFI or RFID.  All would be interesting keys.  It could however, be designed similarly to the garage door control, which I think online control through the network would be best.  I think that it may be better to add bluetooth so that a key can be passed to other users and only their phone is needed.
+
