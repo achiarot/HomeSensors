@@ -1,0 +1,40 @@
+NETWORK MAP MESH STRUCTURE
+
+SERVER
+	RETRANSMIT NODES
+		TRANSMIT ONLY NODES (BATTERY Only Devices)
+		
+The server will maintain and manage the network map.  Each node will hold the network map in EEPROM and will use it
+to decide which node to use for retransmission.  It will first attempt to send to its the first node in EEPROM, then
+it will work down the list requesting retransmits to the server.  By default, all data will be directed from satellite
+nodes to the server node.  We will however state a destination node, as it will be possible that the server is making 
+a request to a satellite.
+
+EEPROM STORAGE
+The address of the server will be stored first, with all satellite nodes that are capable of retransmitting comming
+next.  The data structure of the MAP will be as follows:
+
+| 1 Byte - Type of node	| 1 Byte Transmission Quality | 5 Bytes - Address of Node |	
+
+TYPE
+There will be 3 types of nodes:
+0x01 - Servers
+0x02 - Retransmit Nodes
+0x03 - Simple Nodes - No Retransmit Capability
+
+//This is theoretical, may not be implemented
+TRANSMISSION QUALITY
+The Transmission quality will be a value which is maintained by the node and reflects how often it is successfully able
+to transmit data through that node.  Over the first transmissions done by a node, it will rank the nodes that it has the
+most success transmitting through, and will require the EEPROM to reflect that.  Once there have been 5 nodes sorted to
+the front of the EEPROM, the node will no longer resort them. After each transmission, the node will continue used the same
+6 nodes to transmit data through.
+//This may not be implemented
+
+INITIALIZATION
+When initially setup, the node will be given a default address.  When the server receives a transmission from the default
+address, it will send out an Address Change transmission back, assigning that node a new address.  It will then send a map
+change transmission to all nodes and will have the network map updated and propogated to all nodes.
+
+MAP MAINTENANCE
+The network map will be stored in a database on the server and managed by the server software.
