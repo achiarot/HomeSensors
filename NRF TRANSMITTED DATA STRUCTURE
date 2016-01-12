@@ -1,0 +1,35 @@
+NRF TRANSMITTED DATA STRUCTURE
+
+OVERALL DATA STRUCTURE
+	Transmission part		Components			Description
+	Header					Transmission Type	This will describe to the node what to do and how to interpret the incoming data
+							Length of Message	This will be the length of the message. If greater than 255 the next byte will also be part of this section
+	Body					Various				This will contain all the data associated with the type of transission being done.  This will vary greatly and is described in later sections.
+
+FORMAT OF THE SECTIONS	
+
+Header		
+ Transmission Type								1 Byte
+	Standard Messages
+	Byte Value		Type of Message Incoming	Description
+	0x01			Read Request				This means that the server is requesting the status data of a given Node
+	0x02			Status Update				The status of all attached input devices of a given node
+	0x03			Output settings				The server is making a request to change the output of an output device
+	0x0F			Pass Through Request		If contacting the initial node was unsuccessful, a passthrough request will be made
+	
+	EEPROM Update Requests
+	0xFE			Update node address			This request has the receiving node update their address in the EEPROM. Typically it will be used upon initial setup, though there may be times to change the network map and addresses may be changed.
+	0xFD			Update Map					This request has the receiving node update the network map in the EEPROM.  This will happen when initializing the node and whenever a new retransmit node has been added.
+
+ Length of Message								Variable length, depending on data being sent
+												Description
+												This will be a series of bytes integer which will contain the number of bytes that will be transmitted in the Body of the message.
+						
+BODY of the TRANSMISSION
+
+	Type of Request		Description
+	Read Request		The body of a read request will not contain any data. A read request will only trigger the node to send a Status Update back to the server
+	Status Update		The status update will step through all the types of data that can be read by the node. These are:			
+		Byte Value		Length of Message (Bytes)	Type of Data being sent	
+		0x01			2																	
+												
