@@ -1,11 +1,11 @@
 NRF TRANSMITTED DATA STRUCTURE
 
 OVERALL DATA STRUCTURE
-	Transmission part		Components			Description
-	Header				Transmission Type		This will describe to the node what to do and how to interpret the incoming data
-					From Node			This will be the address of the transmitting node
-					Length of Message		This will be the length of the message. If greater than 255 the next byte will also be part of this section
-	Body				Various				This will contain all the data associated with the type of transission being done.  This will vary greatly and is described in later sections.
+	Transmission part		Components		Description
+	Header				Transmission Type	This will describe to the node what to do and how to interpret the incoming data
+					From Node		This will be the address of the transmitting node
+					Length of Message	This will be the length of the message. If greater than 255 the next byte will also be part of this section
+	Body				Various			This will contain all the data associated with the type of transission being done.  This will vary greatly and is described in later sections.
 
 FORMAT OF THE SECTIONS	
 
@@ -19,12 +19,11 @@ Header
 	0x0F			Pass Through Request		If contacting the initial node was unsuccessful, a passthrough request will be made
 	
 	EEPROM Update Requests
-	0xFE			Update node address			This request has the receiving node update their address in the EEPROM. Typically it will be used upon initial setup, though there may be times to change the network map and addresses may be changed.
-	0xFD			Update Map					This request has the receiving node update the network map in the EEPROM.  This will happen when initializing the node and whenever a new retransmit node has been added.
+	0xFE			Update node address		This request has the receiving node update their address in the EEPROM. Typically it will be used upon initial setup, though there may be times to change the network map and addresses may be changed.
+	0xFD			Update Map			This request has the receiving node update the network map in the EEPROM.  This will happen when initializing the node and whenever a new retransmit node has been added.
 
  From Node			5 Bytes				The 40 bit address of the sending node
-
- Length of Message						Variable length, depending on data being sent
+ Length of Message		Variable			Variable length, depending on data being sent
 								This will be a series of bytes uint8_t added together which will contain the number of bytes that will be transmitted in the Body of the message.
 						
 BODY of the TRANSMISSION
@@ -39,13 +38,11 @@ BODY of the TRANSMISSION
 		Byte Value	Length of Message (Bytes)	Type of data being sent		Description
 		0x01		2				Temperatures
 		0x02		2				Pressure
-		0x03		1 & 1+ 				Switches 			1/0 inputs. The first byte will determine how many switches there are, the second and following will contain the sqitch status.
-		
+		0x03		1 & 1				Switches 			1/0 inputs. The first byte will determine how many switches there are, the second and following will contain the switch status.		
 		OUTPUT DATA
 		Byte Value	Length of Message (Bytes)	Type of data being sent		Description										
-		0xFE		1 & 1+				Switches			1/0 outputs. The first byte will determine how many switches there are, the second and following will contain the sqitch status.
-		0xFD		1				PWM outputs			Values between 0-255 to activate PWM pins
-    	
+		0xFE		1 & 1				Switches			1/0 outputs. The first byte will determine how many switches there are, the second and following will contain the sqitch status.
+		0xFD		1				PWM outputs			Values between 0-255 to activate PWM pins    	
 	Update Output Settings (From Server)
 		Formatting same as above, only output data is included.  The receiving node will update its outputs.		
 	
