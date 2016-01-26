@@ -37,7 +37,8 @@
  * reception.  You will need to attach the IRQ line from the nrf24 to one of
  * the Interrupt pins on the arduino.
  */
-//#define RADIOISR 2
+#define RADIOPIN 2
+//#define RADIOISR  //Uncomment if you wish to be able to wake this device through the radio
 
 /////////This may be outdated information and no need for using LOW only
 /*All ISR's will be set using a LOW pin state. It may be useful to break it out 
@@ -85,6 +86,7 @@
 /**************Configuration end***************/
 
 //all incuded libraries
+#include <float.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 #include <SPI.h>
@@ -93,7 +95,7 @@
 
 /*Macros*/
 #define ArrayLength(x)       (sizeof(x) / sizeof(x[0]))
-#define NOVAL std::numeric_limits<float>::max()
+#define NOVAL FLT_MAX
 
 //ISR Flag bits
 #define RADIOFLAG 0x01
@@ -125,7 +127,7 @@ volatile int wdtOverrun = 0;
   OneWire ds18bTemp(DS18B20);
 #endif
 #ifdef SIMPLEOUTHI || SIMPLEOUTLO
-  switchDef outputs = outputs();
+  struct switchDef outputs = outputs();
 #endif
 #ifdef SIMPLEOUTHI
   int outputsHi[] = SIMPLEOUTHI;
@@ -152,8 +154,8 @@ void setup() {
   #endif
 
   
-  #ifdef RADIOISR
-    initializeRadio(RADIOISR);
+  #ifdef RADIOPIN
+    initializeRadio(RADIOPIN);
   #endif
   
   #ifdef ISRPINS
@@ -205,7 +207,7 @@ void loop() {
     }
     if((flags|ISRFLAG)>0){
       //We have had an interrupt request and will read all inputs and send back the data
-      statusUpdate();
+      bodyStatusUpdate();
       
       //clear the isrflag since we are done
       flags &= ~ISRFLAG;
@@ -222,7 +224,7 @@ void initializeRadio(int radioPin){
   //set all the parameters for the radio
   radio.begin();
   radio.setRetries(0,15);
-  
+  radio.setPALevel(RF24_PA_HIGH);
   
 }
 
@@ -233,7 +235,7 @@ void sleep(){
   sleep_enable();
   sleep_bod_disable();
   #ifdef RADIOISR
-    attachInterrupt(digitalPinToInterrupt(RADIOISR),radioISR, LOW);
+    attachInterrupt(digitalPinToInterrupt(RADIOPIN),radioISR, LOW);
   #endif
   #ifdef ISRPINS
     for(int i=0;i<ArrayLength(isrPins);i++){
@@ -266,7 +268,7 @@ void radioISR(void){
   //disable sleep mode
   sleep_disable();
   wdt_disable();
-  detachInterrupt(digitalPin(RADIOISR));
+  detachInterrupt(digitalPinToInterrupt(RADIOPIN));
 
   radio.whatHappened(tx,fail,rx);
   if(rx){
@@ -335,8 +337,8 @@ struct statusDef{
 	uint64_t address;
 	float temperature;
 	float pressure;
-	switchDef switches;
-	switchDef outputs;
+	struct switchDef switches = switchDef();
+	struct switchDef outputs = switchDef();
 	
 	//Initialization constructor
 	statusDef(){
@@ -346,7 +348,7 @@ struct statusDef{
 	  switches = switchDef();
 	  outputs = switchDef();
 	}
-}
+};
 /*************Defining all the structs**************/
 
 /*************Reading status functions**************/
@@ -365,9 +367,9 @@ void bodyStatusUpdate(){
 }
 
 
-switchDef readSwitches(){
+struct switchDef readSwitches(){
   //initialize the switchDef
-  switchDef val = switchDef();
+  struct switchDef val = switchDef();
   
   #ifdef ISRPINS
     for(int i = 0; i<ArrayLength(isrPins);i++){
