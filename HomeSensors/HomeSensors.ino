@@ -119,19 +119,21 @@ volatile int wdtOverrun = 0;
 //May not be needed ^
 
 #ifdef ISRPINS
-  int isrPins[] = ISRPINS;
+  uint8_t isrPins[] = ISRPINS;
 #endif
 #ifdef DS18B20
   OneWire ds18bTemp(DS18B20);
 #endif
-#ifdef SIMPLEOUTHI || SIMPLEOUTLO
-  switchDef outputs = outputs();
-#endif
+
 #ifdef SIMPLEOUTHI
-  int outputsHi[] = SIMPLEOUTHI;
+  uint8_t outputsHi[] = SIMPLEOUTHI;
 #endif
 #ifdef SIMPLEOUTLO
-  int outputsLo[] = SIMPLEOUTLO;
+  uint8_t outputsLo[] = SIMPLEOUTLO;
+#endif
+#ifdef SIMPLEOUTHI || SIMPLEOUTLO
+  switchDef outputs = switchDef();
+  uint8_t outputSwitches[ArrayLength(outputsHi)+ArrayLength(outputsLo)];
 #endif
 
 
@@ -139,7 +141,6 @@ volatile int wdtOverrun = 0;
 void setup() {
   //Turn off interupts for the initialization
   cli();
-
 
   #ifdef ENTRYSWITCH
     //initialize the entry switch to trigger interupts
@@ -150,9 +151,8 @@ void setup() {
     pinMode(entrySwitch[1], INPUT);
     //There is no internal pulldown, so this must be on the circuit
   #endif
-
   
-  #ifdef RADIOISR
+  #ifdef NRFRADIO
     initializeRadio(RADIOISR);
   #endif
   
@@ -163,11 +163,6 @@ void setup() {
       pinMode(isrPins[i],INPUT);
       digitalWrite(isrPins[i], HIGH);
     }
-    inputDevices += ArrayLength(isrPins);
-  #endif
-  
-  #ifdef DS18B20
-    inputDevices += 1;
   #endif
   
   #ifdef SIMPLEOUTHI
@@ -176,20 +171,25 @@ void setup() {
     for(int i=0;i<ArrayLength(outputsHi);i++){
       pinMode(outputsHi[i],OUTPUT);
       digitalWrite(outputsHi[i], HIGH);
+	  outputsSwitches[i] = outputsHi[i];
 	  outputs.switchStatus |= 1 << i;
     }
     outputs.totalSwitches += ArrayLength(outputsHi);
   #endif
-  
   #ifdef SIMPLEOUTLO
     //Intialize all simple outputs as output pins
     //Set the initial state to low
     for(int i=0;i<ArrayLength(outputsLo);i++){
       pinMode(outputsLo[i],OUTPUT);
       digitalWrite(outputsLo[i], LOW);
+	  outputSwitches[outputs.totalSwitches + 1 + i] = outputsLo[i];
     }
     outputs.totalSwitches += ArrayLength(outputsLo);
   #endif
+  #ifdef SIMPLEOUTLO || SIMPLEOUTHI
+	setSimpleOutputs(outputs, outputSwitches);
+  #endif
+  
   sei();
 }
 
@@ -214,16 +214,18 @@ void loop() {
   sleep();
 }
 
-void initializeRadio(int radioPin){
-  //initialize the radio isr pin
-  pinMode(radioPin, INPUT);
-  //now set the internal pullup
-  digitalWrite(radioPin, HIGH);
+void initializeRadio(uint8_t radioPin){
+  #ifdef RADIOISR	
+	  //initialize the radio isr pin
+	  pinMode(radioPin, INPUT);
+	  //now set the internal pullup
+	  digitalWrite(radioPin, HIGH);
+  #endif
   //set all the parameters for the radio
   radio.begin();
   radio.setRetries(0,15);
-  
-  
+  //sleep the radio until it is needed
+  radio.powerDown();
 }
 
 void sleep(){
@@ -351,16 +353,34 @@ struct statusDef{
 
 /*************Reading status functions**************/
 /*This function will read all current Status data, and then send that to the base station*/
-void bodyStatusUpdate(){
-  statusDef status = statusDef();
+void StatusUpdate(){
+	uint8_t messageLength = 0;
+  //read all the status updates
   #ifdef DS18B20
-    status.temperature = getTemp(ds18bTemp);
+	//just for the ds18b we will be collecting the data before calling the transmit function as it can take up to 750us
+    float tempDs18b = getTemp(ds18bTemp);
+	messageLength += 1 + sizeOf(tempDs18b);
   #endif
   #ifdef ISRPINS
-    status.switches = readSwitches();
+    switchDef switches = readSwitches();
+	messageLength += 1 + sizeOf(switches);
   #endif
   #ifdef SIMPLEOUTHI || SIMPLEOUTLO
-	status.outputs = outputs;
+	switchDef simpleOuts = outputs;
+	messageLength += 1 + sizeOf(simpleOuts);
+  #endif
+
+  
+  //now send all data 1 sensor at a time
+  
+  #ifdef DS18B20
+	
+  #endif
+  #ifdef ISRPINS
+    switchDef switches = readSwitches();
+  #endif
+  #ifdef SIMPLEOUTHI || SIMPLEOUTLO
+	switchDef outputs = outputs;
   #endif
 }
 
@@ -375,12 +395,17 @@ switchDef readSwitches(){
       val.totalSwitches++;
     }
   #endif  
+  //there could be another type of switch defined
+  
   return val;
 }
 
-void setOutputs(){
-	
+void setSimpleOutputs(byte outputStatus,uint8_t outputPins[]){
+	for(byte i = 0; i < arrayLength(outputPins); i++){
+		digitalWrite(outputPins[i], (outputStatus & 1<<i));
+	}
 }
+
 
 float getTemp(OneWire temp){
   byte data[12];
