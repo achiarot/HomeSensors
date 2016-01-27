@@ -37,8 +37,7 @@
  * reception.  You will need to attach the IRQ line from the nrf24 to one of
  * the Interrupt pins on the arduino.
  */
-#define RADIOPIN 2
-//#define RADIOISR  //Uncomment if you wish to be able to wake this device through the radio
+//#define RADIOISR 2
 
 /////////This may be outdated information and no need for using LOW only
 /*All ISR's will be set using a LOW pin state. It may be useful to break it out 
@@ -121,19 +120,21 @@ volatile int wdtOverrun = 0;
 //May not be needed ^
 
 #ifdef ISRPINS
-  int isrPins[] = ISRPINS;
+  uint8_t isrPins[] = ISRPINS;
 #endif
 #ifdef DS18B20
   OneWire ds18bTemp(DS18B20);
 #endif
-#ifdef SIMPLEOUTHI || SIMPLEOUTLO
-  struct switchDef outputs = outputs();
-#endif
+
 #ifdef SIMPLEOUTHI
-  int outputsHi[] = SIMPLEOUTHI;
+  uint8_t outputsHi[] = SIMPLEOUTHI;
 #endif
 #ifdef SIMPLEOUTLO
-  int outputsLo[] = SIMPLEOUTLO;
+  uint8_t outputsLo[] = SIMPLEOUTLO;
+#endif
+#ifdef SIMPLEOUTHI || SIMPLEOUTLO
+  switchDef outputs = switchDef();
+  uint8_t outputSwitches[ArrayLength(outputsHi)+ArrayLength(outputsLo)];
 #endif
 
 
@@ -141,7 +142,6 @@ volatile int wdtOverrun = 0;
 void setup() {
   //Turn off interupts for the initialization
   cli();
-
 
   #ifdef ENTRYSWITCH
     //initialize the entry switch to trigger interupts
@@ -153,9 +153,12 @@ void setup() {
     //There is no internal pulldown, so this must be on the circuit
   #endif
 
-  
-  #ifdef RADIOPIN
-    initializeRadio(RADIOPIN);
+  #ifdef NRFRADIO
+    #ifdef RADIOISR
+      initializeNRF(RADIOPIN);
+    #else
+      initializeNRF();
+    #endif
   #endif
   
   #ifdef ISRPINS
@@ -165,11 +168,6 @@ void setup() {
       pinMode(isrPins[i],INPUT);
       digitalWrite(isrPins[i], HIGH);
     }
-    inputDevices += ArrayLength(isrPins);
-  #endif
-  
-  #ifdef DS18B20
-    inputDevices += 1;
   #endif
   
   #ifdef SIMPLEOUTHI
@@ -178,7 +176,8 @@ void setup() {
     for(int i=0;i<ArrayLength(outputsHi);i++){
       pinMode(outputsHi[i],OUTPUT);
       digitalWrite(outputsHi[i], HIGH);
-	  outputs.switchStatus |= 1 << i;
+      outputsSwitches[i] = outputsHi[i];
+      outputs.switchStatus |= 1 << i;
     }
     outputs.totalSwitches += ArrayLength(outputsHi);
   #endif
@@ -189,9 +188,14 @@ void setup() {
     for(int i=0;i<ArrayLength(outputsLo);i++){
       pinMode(outputsLo[i],OUTPUT);
       digitalWrite(outputsLo[i], LOW);
+      outputSwitches[outputs.totalSwitches + 1 + i] = outputsLo[i];
     }
     outputs.totalSwitches += ArrayLength(outputsLo);
   #endif
+  #ifdef SIMPLEOUTLO || SIMPLEOUTHI
+    setSimpleOutputs(outputs, outputSwitches);
+  #endif
+  
   sei();
 }
 
@@ -207,7 +211,7 @@ void loop() {
     }
     if((flags|ISRFLAG)>0){
       //We have had an interrupt request and will read all inputs and send back the data
-      bodyStatusUpdate();
+      statusUpdate();
       
       //clear the isrflag since we are done
       flags &= ~ISRFLAG;
@@ -216,16 +220,24 @@ void loop() {
   sleep();
 }
 
-void initializeRadio(int radioPin){
+void initializeNRF(uint8_t radioISRPin){
   //initialize the radio isr pin
-  pinMode(radioPin, INPUT);
+  pinMode(radioISRPin, INPUT);
   //now set the internal pullup
-  digitalWrite(radioPin, HIGH);
+  digitalWrite(radioISRPin, HIGH);
+
   //set all the parameters for the radio
   radio.begin();
   radio.setRetries(0,15);
-  radio.setPALevel(RF24_PA_HIGH);
-  
+  //sleep the radio until it is needed
+  radio.powerDown();
+}
+void initializeNRF(){
+  //set all the parameters for the radio
+  radio.begin();
+  radio.setRetries(0,15);
+  //sleep the radio until it is needed
+  radio.powerDown();
 }
 
 void sleep(){
@@ -262,28 +274,30 @@ void watchdogEnable(){
 }
 
 /**************Interrupt handlers******************/
-//ISR triggered by radio
-void radioISR(void){
-  bool tx, fail, rx;
-  //disable sleep mode
-  sleep_disable();
-  wdt_disable();
-  detachInterrupt(digitalPinToInterrupt(RADIOPIN));
-
-  radio.whatHappened(tx,fail,rx);
-  if(rx){
-    //Received data, raise the radio flag
-    flags |= RADIOFLAG; 
+#ifdef RADIOISR
+  //ISR triggered by radio
+  void radioISR(void){
+    bool tx, fail, rx;
+    //disable sleep mode
+    sleep_disable();
+    wdt_disable();
+    detachInterrupt(digitalPin(RADIOISR));
+  
+    radio.whatHappened(tx,fail,rx);
+    if(rx){
+      //Received data, raise the radio flag
+      flags |= RADIOFLAG; 
+    }
+    else if(tx){
+    //sent data arrived successfully
+      //Do nothing
+    }
+    else{
+      //send failed, raise the resend flag, for now we will just ignore it
+      //Do nothing
+    }
   }
-  else if(tx){
-	//sent data arrived successfully
-    //Do nothing
-  }
-  else{
-    //send failed, raise the resend flag, for now we will just ignore it
-    //Do nothing
-  }
-}
+#endif
 
 //ISR Triggered by switch
 void wakeUp(){
@@ -327,49 +341,50 @@ struct switchDef{
   
   //constuctor initializing to zero
   switchDef(){ 
-	totalSwitches = 0;
-	switchStatus = 0x00;
+  totalSwitches = 0;
+  switchStatus = 0x00;
   }
 };
 
-//overall data struct, this will include all sensors
-struct statusDef{
-	uint64_t address;
-	float temperature;
-	float pressure;
-	struct switchDef switches = switchDef();
-	struct switchDef outputs = switchDef();
-	
-	//Initialization constructor
-	statusDef(){
-	  address = 0;
-	  temperature = NOVAL;
-	  pressure = NOVAL;
-	  switches = switchDef();
-	  outputs = switchDef();
-	}
-};
 /*************Defining all the structs**************/
 
 /*************Reading status functions**************/
 /*This function will read all current Status data, and then send that to the base station*/
-void bodyStatusUpdate(){
-  statusDef status = statusDef();
+void statusUpdate(){
+  uint8_t messageLength = 0;
+  //read all the status updates
   #ifdef DS18B20
-    status.temperature = getTemp(ds18bTemp);
+  //just for the ds18b we will be collecting the data before calling the transmit function as it can take up to 750us
+    float tempDs18b = getTemp(ds18bTemp);
+  messageLength += 1 + sizeof(tempDs18b);
   #endif
   #ifdef ISRPINS
-    status.switches = readSwitches();
+    switchDef switches = readSwitches();
+  messageLength += 1 + sizeof(switches);
   #endif
   #ifdef SIMPLEOUTHI || SIMPLEOUTLO
-	status.outputs = outputs;
+  switchDef simpleOuts = outputs;
+  messageLength += 1 + sizeof(simpleOuts);
+  #endif
+
+  
+  //now send all data 1 sensor at a time
+  
+  #ifdef DS18B20
+  
+  #endif
+  #ifdef ISRPINS
+
+  #endif
+  #ifdef SIMPLEOUTHI || SIMPLEOUTLO
+
   #endif
 }
 
 
 struct switchDef readSwitches(){
   //initialize the switchDef
-  struct switchDef val = switchDef();
+  switchDef val = switchDef();
   
   #ifdef ISRPINS
     for(int i = 0; i<ArrayLength(isrPins);i++){
@@ -377,12 +392,17 @@ struct switchDef readSwitches(){
       val.totalSwitches++;
     }
   #endif  
+  //there could be another type of switch defined
+  
   return val;
 }
 
-void setOutputs(){
-	
+void setSimpleOutputs(byte outputStatus,uint8_t outputPins[]){
+  for(byte i = 0; i < ArrayLength(outputPins); i++){
+    digitalWrite(outputPins[i], (outputStatus & 1<<i));
+  }
 }
+
 
 float getTemp(OneWire temp){
   byte data[12];
@@ -410,7 +430,7 @@ float getTemp(OneWire temp){
     //Default is celsius
     return (float)rawTemp/16;
   #else
-	//returning Fahrenheit
+  //returning Fahrenheit
     return ((float)rawTemp/16) * 9/5 + 32;
   #endif
 }
